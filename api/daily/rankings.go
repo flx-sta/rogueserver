@@ -18,6 +18,8 @@
 package daily
 
 import (
+	"log"
+
 	"github.com/pagefaultgames/rogueserver/db"
 	"github.com/pagefaultgames/rogueserver/defs"
 )
@@ -30,4 +32,18 @@ func Rankings(category, page int) ([]defs.DailyRanking, error) {
 	}
 
 	return rankings, nil
+}
+
+func RankingsSearch(searchQeury string, page int, limit int) ([]defs.DailyRankingSearchResultItem, error) {
+	rankings, err := db.FetchRankingsSearchResult(searchQeury, page, limit)
+	if err != nil {
+		return rankings, err
+	}
+
+	return rankings, nil
+}
+
+func SoftDeleteRanking(username string, date string, discordId string) (bool, error) {
+	log.Printf("Soft deleting daily run: %s, %s, %s", username, date, discordId)
+	return db.SoftDeleteRankingByUsernameAndDate(username, date, discordId)
 }

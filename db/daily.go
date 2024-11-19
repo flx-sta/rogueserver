@@ -52,6 +52,52 @@ func AddOrUpdateAccountDailyRun(uuid []byte, score int, wave int) error {
 	return nil
 }
 
+func FetchRankingByUsernameAndDate(username string, date string) (*defs.DailyRankingSearchResultItem, error) {
+	var dbQuery = `
+		SELECT 
+			adr.date, 
+			adr.score, 
+			adr.wave, 
+			adr.timestamp, 
+			adr.deleted, 
+			adr.deletedAt, 
+			adr.deletedByDiscordId, 
+			a.username  
+		FROM accountDailyRuns adr 
+		JOIN accounts a ON adr.uuid = a.uuid 
+		WHERE a.username LIKE ?
+			AND date = ?
+		LIMIT 1;`
+
+	results, err := handle.Query(dbQuery, username, date)
+	if err != nil {
+		return nil, err
+	}
+
+	defer results.Close()
+
+	var result *defs.DailyRankingSearchResultItem
+	for results.Next() {
+		item := &defs.DailyRankingSearchResultItem{}
+		err = results.Scan(
+			&item.Date,
+			&item.Score,
+			&item.Wave,
+			&item.Timestamp,
+			&item.Deleted,
+			&item.DeletedAt,
+			&item.DeletedByDiscordId,
+			&item.Username,
+		)
+		if err != nil {
+			return item, err
+		}
+		result = item
+	}
+
+	return result, nil
+}
+
 func FetchRankings(category int, page int) ([]defs.DailyRanking, error) {
 	var rankings []defs.DailyRanking
 
@@ -60,9 +106,9 @@ func FetchRankings(category int, page int) ([]defs.DailyRanking, error) {
 	var query string
 	switch category {
 	case 0:
-		query = "SELECT RANK() OVER (ORDER BY adr.score DESC, adr.timestamp), a.username, adr.score, adr.wave FROM accountDailyRuns adr JOIN dailyRuns dr ON dr.date = adr.date JOIN accounts a ON adr.uuid = a.uuid WHERE dr.date = UTC_DATE() AND a.banned = 0 LIMIT 10 OFFSET ?"
+		query = "SELECT a.username, adr.score, adr.wave FROM accountDailyRuns adr JOIN dailyRuns dr ON dr.date = adr.date JOIN accounts a ON adr.uuid = a.uuid WHERE dr.date = UTC_DATE() AND a.banned = 0 AND adr.deleted = 0 LIMIT 10 OFFSET ?"
 	case 1:
-		query = "SELECT RANK() OVER (ORDER BY SUM(adr.score) DESC, adr.timestamp), a.username, SUM(adr.score), 0 FROM accountDailyRuns adr JOIN dailyRuns dr ON dr.date = adr.date JOIN accounts a ON adr.uuid = a.uuid WHERE dr.date >= DATE_SUB(DATE(UTC_TIMESTAMP()), INTERVAL DAYOFWEEK(UTC_TIMESTAMP()) - 1 DAY) AND a.banned = 0 GROUP BY a.username ORDER BY 1 LIMIT 10 OFFSET ?"
+		query = "SELECT RANK() OVER (ORDER BY SUM(adr.score) DESC, adr.timestamp), a.username, SUM(adr.score), 0 FROM accountDailyRuns adr JOIN dailyRuns dr ON dr.date = adr.date JOIN accounts a ON adr.uuid = a.uuid WHERE dr.date >= DATE_SUB(DATE(UTC_TIMESTAMP()), INTERVAL DAYOFWEEK(UTC_TIMESTAMP()) - 1 DAY) AND a.banned = 0 AND adr.deleted = 0 GROUP BY a.username ORDER BY 1 LIMIT 10 OFFSET ?"
 	}
 
 	results, err := handle.Query(query, offset)
@@ -89,9 +135,9 @@ func FetchRankingPageCount(category int) (int, error) {
 	var query string
 	switch category {
 	case 0:
-		query = "SELECT COUNT(a.username) FROM accountDailyRuns adr JOIN dailyRuns dr ON dr.date = adr.date JOIN accounts a ON adr.uuid = a.uuid WHERE dr.date = UTC_DATE()"
+		query = "SELECT COUNT(a.username) FROM accountDailyRuns adr JOIN dailyRuns dr ON dr.date = adr.date JOIN accounts a ON adr.uuid = a.uuid WHERE dr.date = UTC_DATE() AND adr.deleted = 0"
 	case 1:
-		query = "SELECT COUNT(DISTINCT a.username) FROM accountDailyRuns adr JOIN dailyRuns dr ON dr.date = adr.date JOIN accounts a ON adr.uuid = a.uuid WHERE dr.date >= DATE_SUB(DATE(UTC_TIMESTAMP()), INTERVAL DAYOFWEEK(UTC_TIMESTAMP()) - 1 DAY)"
+		query = "SELECT COUNT(DISTINCT a.username) FROM accountDailyRuns adr JOIN dailyRuns dr ON dr.date = adr.date JOIN accounts a ON adr.uuid = a.uuid WHERE dr.date >= DATE_SUB(DATE(UTC_TIMESTAMP()), INTERVAL DAYOFWEEK(UTC_TIMESTAMP()) - 1 DAY) AND adr.deleted = 0"
 	}
 
 	var recordCount int
@@ -101,4 +147,92 @@ func FetchRankingPageCount(category int) (int, error) {
 	}
 
 	return int(math.Ceil(float64(recordCount) / 10)), nil
+}
+
+func FetchRankingsSearchResult(searchQuery string, page int, limit int) ([]defs.DailyRankingSearchResultItem, error) {
+	if limit < 0 {
+		limit = 10
+	} else if limit > 100 {
+		limit = 100
+	}
+
+	var rankings []defs.DailyRankingSearchResultItem
+	offset := (page - 1) * 10
+	wildcardQuery := "%" + searchQuery + "%"
+
+	var dbQuery = `
+		SELECT 
+			adr.date, 
+			adr.score, 
+			adr.wave, 
+			adr.timestamp, 
+			adr.deleted, 
+			adr.deletedAt, 
+			adr.deletedByDiscordId, 
+			a.username  
+		FROM accountDailyRuns adr 
+		JOIN accounts a ON adr.uuid = a.uuid 
+		WHERE a.username LIKE ?
+			OR adr.score LIKE ?
+			OR adr.wave LIKE ?
+			OR adr.date LIKE ?
+		LIMIT ? 
+		OFFSET ?`
+
+	results, err := handle.Query(dbQuery, wildcardQuery, wildcardQuery, wildcardQuery, wildcardQuery, limit, offset)
+	if err != nil {
+		return rankings, err
+	}
+
+	defer results.Close()
+
+	for results.Next() {
+		var item defs.DailyRankingSearchResultItem
+		err = results.Scan(
+			&item.Date,
+			&item.Score,
+			&item.Wave,
+			&item.Timestamp,
+			&item.Deleted,
+			&item.DeletedAt,
+			&item.DeletedByDiscordId,
+			&item.Username,
+		)
+		if err != nil {
+			return rankings, err
+		}
+
+		rankings = append(rankings, item)
+	}
+
+	return rankings, nil
+}
+
+func SoftDeleteRankingByUsernameAndDate(username string, date string, discordId string) (bool, error) {
+	ranking, err := FetchRankingByUsernameAndDate(username, date)
+	if err != nil {
+		return false, err
+	}
+
+	if (ranking == nil) || (ranking.Deleted == 1) {
+		// already deleted
+		return false, nil
+	}
+
+	dbQuery := `
+		UPDATE accountDailyRuns adr
+		JOIN accounts a ON adr.uuid = a.uuid
+		SET deleted = 1, 
+				deletedAt = UTC_TIMESTAMP(), 
+				deletedByDiscordId = ? 
+		WHERE a.username = ?
+			AND date = ?;
+	`
+
+	_, err = handle.Exec(dbQuery, discordId, username, date)
+	if err != nil {
+		return false, err
+	}
+
+	return true, nil
 }

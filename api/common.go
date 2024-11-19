@@ -73,6 +73,8 @@ func Init(mux *http.ServeMux) error {
 	mux.HandleFunc("POST /admin/account/googleLink", handleAdminGoogleLink)
 	mux.HandleFunc("POST /admin/account/googleUnlink", handleAdminGoogleUnlink)
 	mux.HandleFunc("GET /admin/account/adminSearch", handleAdminSearch)
+	mux.HandleFunc("GET /admin/daily/ranking/search", handleAdminDailyRankingSearch)
+	mux.HandleFunc("DELETE /admin/daily/ranking", handleAdminSoftDeleteDailyRanking)
 
 	return nil
 }

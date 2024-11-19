@@ -108,6 +108,13 @@ func setupDb(tx *sql.Tx) error {
 		// MIGRATION 004
 
 		`ALTER TABLE accounts ADD COLUMN IF NOT EXISTS isInLocalDb TINYINT(1) NOT NULL DEFAULT 1`,
+
+		// ----------------------------------
+		// MIGRATION 006 - "User Management"
+
+		`ALTER TABLE accountDailyRuns ADD COLUMN IF NOT EXISTS deleted TINYINT(1) NOT NULL DEFAULT 0`,
+		`ALTER TABLE accountDailyRuns ADD COLUMN IF NOT EXISTS deletedAt TIMESTAMP DEFAULT NULL`,
+		`ALTER TABLE accountDailyRuns ADD COLUMN IF NOT EXISTS deletedByDiscordId VARCHAR(32) DEFAULT NULL`,
 	}
 
 	for _, q := range queries {

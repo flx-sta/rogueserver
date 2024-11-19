@@ -947,3 +947,85 @@ func handleAdminSearch(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, r, adminSearchResult)
 	log.Printf("%s: %s searched for username %s", userDiscordId, r.URL.Path, username)
 }
+
+func handleAdminDailyRankingSearch(w http.ResponseWriter, r *http.Request) {
+	var err error
+	var searchQuery string
+	if r.URL.Query().Has("searchQuery") {
+		searchQuery = r.URL.Query().Get("searchQuery")
+		if searchQuery == "" {
+			httpError(w, r, fmt.Errorf("searchQuery cannot be empty"), http.StatusBadRequest)
+			return
+		}
+	}
+
+	page := 1
+	if r.URL.Query().Has("page") {
+		page, err = strconv.Atoi(r.URL.Query().Get("page"))
+		if err != nil {
+			httpError(w, r, fmt.Errorf("failed to convert page: %s", err), http.StatusBadRequest)
+			return
+		}
+	}
+
+	limit := 10
+	if r.URL.Query().Has("limit") {
+		limit, err = strconv.Atoi(r.URL.Query().Get("limit"))
+		if err != nil {
+			httpError(w, r, fmt.Errorf("failed to convert limit: %s", err), http.StatusBadRequest)
+			return
+		} else if limit > 100 {
+			limit = 100
+		}
+	}
+
+	searchResult, err := daily.RankingsSearch(searchQuery, page, limit)
+	if err != nil {
+		httpError(w, r, err, http.StatusInternalServerError)
+	}
+
+	writeJSON(w, r, searchResult)
+}
+
+func handleAdminSoftDeleteDailyRanking(w http.ResponseWriter, r *http.Request) {
+	userUuid, err := uuidFromRequest(r)
+	if err != nil {
+		httpError(w, r, err, http.StatusUnauthorized)
+		return
+	}
+
+	userDiscordId, err := db.FetchDiscordIdByUUID(userUuid)
+	if err != nil {
+		httpError(w, r, err, http.StatusUnauthorized)
+		return
+	}
+
+	var username string
+	if r.URL.Query().Has("username") {
+		username = r.URL.Query().Get("username")
+		if username == "" {
+			httpError(w, r, fmt.Errorf("username cannot be empty"), http.StatusBadRequest)
+			return
+		}
+	}
+
+	var date string
+	if r.URL.Query().Has("date") {
+		date = r.URL.Query().Get("date")
+		if date == "" {
+			httpError(w, r, fmt.Errorf("date cannot be empty"), http.StatusBadRequest)
+			return
+		}
+	}
+
+	success, err := daily.SoftDeleteRanking(username, date, userDiscordId)
+	if err != nil {
+		httpError(w, r, err, http.StatusInternalServerError)
+	}
+
+	if !success && err == nil {
+		w.WriteHeader(http.StatusNoContent) // already deleted
+	} else {
+		writeJSON(w, r, map[string]bool{"Success": success})
+	}
+}
