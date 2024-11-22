@@ -1053,22 +1053,22 @@ func handleSoftDeleteDailyRun(w http.ResponseWriter, r *http.Request) {
 // Restores a deleted daily run based on the passed username & date
 // TODO: CHECK IF USER HAS ADMIN ROLE!!!!
 func handleRestoreDeletedDailyRun(w http.ResponseWriter, r *http.Request) {
-	var username string
-	if r.URL.Query().Has("username") {
-		username = r.URL.Query().Get("username")
-		if username == "" {
-			httpError(w, r, fmt.Errorf("username cannot be empty"), http.StatusBadRequest)
-			return
-		}
+	err := r.ParseForm()
+	if err != nil {
+		httpError(w, r, fmt.Errorf("failed to parse request form: %s", err), http.StatusBadRequest)
+		return
 	}
 
-	var date string
-	if r.URL.Query().Has("date") {
-		date = r.URL.Query().Get("date")
-		if date == "" {
-			httpError(w, r, fmt.Errorf("date cannot be empty"), http.StatusBadRequest)
-			return
-		}
+	username := r.Form.Get("username")
+	if username == "" {
+		httpError(w, r, fmt.Errorf("username cannot be empty"), http.StatusBadRequest)
+		return
+	}
+
+	date := r.Form.Get("date")
+	if date == "" {
+		httpError(w, r, fmt.Errorf("date cannot be empty"), http.StatusBadRequest)
+		return
 	}
 
 	success, err := daily.RestoreDeletedDailyRun(username, date)

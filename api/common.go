@@ -64,7 +64,7 @@ func Init(mux *http.ServeMux) error {
 	mux.HandleFunc("GET /daily/rankingpagecount", handleDailyRankingPageCount)
 	// daily/runs
 	mux.HandleFunc("GET /daily/runs", handleGetDailyRuns)
-	mux.HandleFunc("DELETE /daily/runs", handleSoftDeleteDailyRun)
+	mux.HandleFunc("DELETE /daily/runs/", handleSoftDeleteDailyRun)
 	mux.HandleFunc("POST /daily/runs/restore", handleRestoreDeletedDailyRun)
 
 	// auth
