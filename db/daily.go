@@ -18,6 +18,7 @@
 package db
 
 import (
+	"database/sql"
 	"math"
 
 	"github.com/pagefaultgames/rogueserver/defs"
@@ -50,52 +51,6 @@ func AddOrUpdateAccountDailyRun(uuid []byte, score int, wave int) error {
 	}
 
 	return nil
-}
-
-func FetchRankingByUsernameAndDate(username string, date string) (*defs.DailyRankingSearchResultItem, error) {
-	var dbQuery = `
-		SELECT 
-			adr.date, 
-			adr.score, 
-			adr.wave, 
-			adr.timestamp, 
-			adr.deleted, 
-			adr.deletedAt, 
-			adr.deletedByDiscordId, 
-			a.username  
-		FROM accountDailyRuns adr 
-		JOIN accounts a ON adr.uuid = a.uuid 
-		WHERE a.username LIKE ?
-			AND date = ?
-		LIMIT 1;`
-
-	results, err := handle.Query(dbQuery, username, date)
-	if err != nil {
-		return nil, err
-	}
-
-	defer results.Close()
-
-	var result *defs.DailyRankingSearchResultItem
-	for results.Next() {
-		item := &defs.DailyRankingSearchResultItem{}
-		err = results.Scan(
-			&item.Date,
-			&item.Score,
-			&item.Wave,
-			&item.Timestamp,
-			&item.Deleted,
-			&item.DeletedAt,
-			&item.DeletedByDiscordId,
-			&item.Username,
-		)
-		if err != nil {
-			return item, err
-		}
-		result = item
-	}
-
-	return result, nil
 }
 
 func FetchRankings(category int, page int) ([]defs.DailyRanking, error) {
@@ -149,67 +104,139 @@ func FetchRankingPageCount(category int) (int, error) {
 	return int(math.Ceil(float64(recordCount) / 10)), nil
 }
 
-func FetchRankingsSearchResult(searchQuery string, page int, limit int) ([]defs.DailyRankingSearchResultItem, error) {
-	if limit < 0 {
-		limit = 10
-	} else if limit > 100 {
-		limit = 100
+func FetchDailyRunsTotalCount(includeDeleted bool) (int, error) {
+	var totalCount int
+	dbQuery := `
+		SELECT COUNT(*) 
+		FROM accountDailyRuns
+	`
+
+	if !includeDeleted {
+		dbQuery += " WHERE deleted = 0"
 	}
 
-	var rankings []defs.DailyRankingSearchResultItem
+	row := handle.QueryRow(dbQuery)
+	err := row.Scan(&totalCount)
+	if err != nil {
+		return -1, err
+	}
+
+	return totalCount, nil
+}
+
+var dailyRunSelectQuery = `
+	SELECT 
+		a.username, 
+		adr.date, 
+		adr.score, 
+		adr.wave, 
+		adr.deleted, 
+		adr.deletedAt, 
+		adr.deletedByDiscordId
+	FROM accountDailyRuns adr 
+	JOIN accounts a ON adr.uuid = a.uuid
+	`
+
+var dailyRunUpdateSelectQuery = `
+	UPDATE accountDailyRuns adr
+	JOIN accounts a ON adr.uuid = a.uuid
+`
+
+func ScanDailyRunRows(rows *sql.Rows, dailyRun *defs.DailyRun) error {
+	return rows.Scan(
+		&dailyRun.Username,
+		&dailyRun.Date,
+		&dailyRun.Score,
+		&dailyRun.Wave,
+		&dailyRun.Deleted,
+		&dailyRun.DeletedAt,
+		&dailyRun.DeletedByDiscordId,
+	)
+}
+
+func FetchDailyRuns(page int, limit int, searchQuery string) ([]defs.DailyRun, error) {
+	var dailyRuns []defs.DailyRun
 	offset := (page - 1) * 10
 	wildcardQuery := "%" + searchQuery + "%"
 
-	var dbQuery = `
-		SELECT 
-			adr.date, 
-			adr.score, 
-			adr.wave, 
-			adr.timestamp, 
-			adr.deleted, 
-			adr.deletedAt, 
-			adr.deletedByDiscordId, 
-			a.username  
-		FROM accountDailyRuns adr 
-		JOIN accounts a ON adr.uuid = a.uuid 
-		WHERE a.username LIKE ?
-			OR adr.score LIKE ?
-			OR adr.wave LIKE ?
-			OR adr.date LIKE ?
-		LIMIT ? 
-		OFFSET ?`
+	dbQuery := dailyRunSelectQuery
 
-	results, err := handle.Query(dbQuery, wildcardQuery, wildcardQuery, wildcardQuery, wildcardQuery, limit, offset)
-	if err != nil {
-		return rankings, err
+	if searchQuery != "" {
+		dbQuery += `
+		WHERE 
+			a.username LIKE ? 
+			OR adr.score LIKE ? 
+			OR adr.wave LIKE ? 
+			OR adr.date LIKE ? 
+		`
 	}
 
-	defer results.Close()
+	// Add LIMIT and OFFSET (this is always included)
+	dbQuery += `LIMIT ? OFFSET ?`
 
-	for results.Next() {
-		var item defs.DailyRankingSearchResultItem
-		err = results.Scan(
+	var rows *sql.Rows
+	var err error
+
+	if searchQuery == "" {
+		rows, err = handle.Query(dbQuery, limit, offset)
+	} else {
+		rows, err = handle.Query(dbQuery, wildcardQuery, wildcardQuery, wildcardQuery, wildcardQuery, limit, offset)
+	}
+
+	if err != nil {
+		return dailyRuns, err
+	}
+
+	defer rows.Close()
+
+	for rows.Next() {
+		var item defs.DailyRun
+
+		err = rows.Scan(
+			&item.Username,
 			&item.Date,
 			&item.Score,
 			&item.Wave,
-			&item.Timestamp,
 			&item.Deleted,
 			&item.DeletedAt,
 			&item.DeletedByDiscordId,
-			&item.Username,
 		)
 		if err != nil {
-			return rankings, err
+			return dailyRuns, err
 		}
 
-		rankings = append(rankings, item)
+		dailyRuns = append(dailyRuns, item)
 	}
 
-	return rankings, nil
+	return dailyRuns, nil
 }
 
-func SoftDeleteRankingByUsernameAndDate(username string, date string, discordId string) (bool, error) {
-	ranking, err := FetchRankingByUsernameAndDate(username, date)
+func FetchDailyRun(username string, date string) (*defs.DailyRun, error) {
+	dbQuery := dailyRunSelectQuery + `
+							WHERE a.username = ? 
+							AND adr.date = ?;`
+
+	var dailyRun defs.DailyRun
+	row := handle.QueryRow(dbQuery, username, date)
+
+	err := row.Scan(
+		&dailyRun.Username,
+		&dailyRun.Date,
+		&dailyRun.Score,
+		&dailyRun.Wave,
+		&dailyRun.Deleted,
+		&dailyRun.DeletedAt,
+		&dailyRun.DeletedByDiscordId,
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	return &dailyRun, nil
+}
+
+func SoftDeleteDailyRun(username string, date string, discordId string) (bool, error) {
+	ranking, err := FetchDailyRun(username, date)
 	if err != nil {
 		return false, err
 	}
@@ -219,9 +246,7 @@ func SoftDeleteRankingByUsernameAndDate(username string, date string, discordId 
 		return false, nil
 	}
 
-	dbQuery := `
-		UPDATE accountDailyRuns adr
-		JOIN accounts a ON adr.uuid = a.uuid
+	dbQuery := dailyRunUpdateSelectQuery + `
 		SET deleted = 1, 
 				deletedAt = UTC_TIMESTAMP(), 
 				deletedByDiscordId = ? 
@@ -230,6 +255,33 @@ func SoftDeleteRankingByUsernameAndDate(username string, date string, discordId 
 	`
 
 	_, err = handle.Exec(dbQuery, discordId, username, date)
+	if err != nil {
+		return false, err
+	}
+
+	return true, nil
+}
+
+func RestoreDeletedDailyRun(username string, date string) (bool, error) {
+	ranking, err := FetchDailyRun(username, date)
+	if err != nil || ranking == nil {
+		return false, err
+	}
+
+	if ranking.Deleted == 0 {
+		// run isn't deleted
+		return false, nil
+	}
+
+	dbQuery := dailyRunUpdateSelectQuery + `
+		SET deleted = 0, 
+				deletedAt = null, 
+				deletedByDiscordId = null 
+		WHERE a.username = ?
+			AND date = ?;
+	`
+
+	_, err = handle.Exec(dbQuery, username, date)
 	if err != nil {
 		return false, err
 	}

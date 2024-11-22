@@ -948,16 +948,10 @@ func handleAdminSearch(w http.ResponseWriter, r *http.Request) {
 	log.Printf("%s: %s searched for username %s", userDiscordId, r.URL.Path, username)
 }
 
-func handleAdminDailyRankingSearch(w http.ResponseWriter, r *http.Request) {
+// Get a batch of daily runs. Max 100 at the same time
+// TODO: CHECK IF USER HAS ADMIN ROLE!!!! (or is this optional here?)
+func handleGetDailyRuns(w http.ResponseWriter, r *http.Request) {
 	var err error
-	var searchQuery string
-	if r.URL.Query().Has("searchQuery") {
-		searchQuery = r.URL.Query().Get("searchQuery")
-		if searchQuery == "" {
-			httpError(w, r, fmt.Errorf("searchQuery cannot be empty"), http.StatusBadRequest)
-			return
-		}
-	}
 
 	page := 1
 	if r.URL.Query().Has("page") {
@@ -974,20 +968,36 @@ func handleAdminDailyRankingSearch(w http.ResponseWriter, r *http.Request) {
 		if err != nil {
 			httpError(w, r, fmt.Errorf("failed to convert limit: %s", err), http.StatusBadRequest)
 			return
-		} else if limit > 100 {
-			limit = 100
 		}
 	}
 
-	searchResult, err := daily.RankingsSearch(searchQuery, page, limit)
+	searchQuery := ""
+	if r.URL.Query().Has("searchQuery") {
+		searchQuery = r.URL.Query().Get("searchQuery")
+	}
+
+	log.Printf("Fetching daily runs with page %d, limit %d and search query %s", page, limit, searchQuery)
+	searchResult, err := daily.DailyRuns(page, limit, searchQuery)
 	if err != nil {
 		httpError(w, r, err, http.StatusInternalServerError)
 	}
 
-	writeJSON(w, r, searchResult)
+	totalCount, err := daily.DailyRunsTotalCount(true)
+	if err != nil {
+		httpError(w, r, err, http.StatusInternalServerError)
+	}
+
+	responseData := defs.PaginatedResponse{
+		Total: totalCount,
+		Data:  searchResult,
+	}
+
+	writeJSON(w, r, responseData)
 }
 
-func handleAdminSoftDeleteDailyRanking(w http.ResponseWriter, r *http.Request) {
+// Deletes a daily run based on the passed username & date
+// TODO: CHECK IF USER HAS ADMIN ROLE!!!!
+func handleSoftDeleteDailyRun(w http.ResponseWriter, r *http.Request) {
 	userUuid, err := uuidFromRequest(r)
 	if err != nil {
 		httpError(w, r, err, http.StatusUnauthorized)
@@ -999,7 +1009,50 @@ func handleAdminSoftDeleteDailyRanking(w http.ResponseWriter, r *http.Request) {
 		httpError(w, r, err, http.StatusUnauthorized)
 		return
 	}
+	if userDiscordId == "" {
+		httpError(w, r, fmt.Errorf("user does not have the required role"), http.StatusForbidden)
+		return
+	}
 
+	var username string
+	if r.URL.Query().Has("username") {
+		username = r.URL.Query().Get("username")
+		if username == "" {
+			httpError(w, r, fmt.Errorf("username cannot be empty"), http.StatusBadRequest)
+			return
+		}
+	} else {
+		httpError(w, r, fmt.Errorf("username cannot be empty"), http.StatusBadRequest)
+		return
+	}
+
+	var date string
+	if r.URL.Query().Has("date") {
+		date = r.URL.Query().Get("date")
+		if date == "" {
+			httpError(w, r, fmt.Errorf("date cannot be empty"), http.StatusBadRequest)
+			return
+		}
+	} else {
+		httpError(w, r, fmt.Errorf("date cannot be empty"), http.StatusBadRequest)
+		return
+	}
+
+	success, err := daily.SoftDeleteDailyRun(username, date, userDiscordId)
+	if err != nil {
+		httpError(w, r, err, http.StatusInternalServerError)
+	}
+
+	if !success && err == nil {
+		w.WriteHeader(http.StatusNoContent) // already deleted
+	} else {
+		writeJSON(w, r, map[string]bool{"Success": success})
+	}
+}
+
+// Restores a deleted daily run based on the passed username & date
+// TODO: CHECK IF USER HAS ADMIN ROLE!!!!
+func handleRestoreDeletedDailyRun(w http.ResponseWriter, r *http.Request) {
 	var username string
 	if r.URL.Query().Has("username") {
 		username = r.URL.Query().Get("username")
@@ -1018,13 +1071,13 @@ func handleAdminSoftDeleteDailyRanking(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	success, err := daily.SoftDeleteRanking(username, date, userDiscordId)
+	success, err := daily.RestoreDeletedDailyRun(username, date)
 	if err != nil {
 		httpError(w, r, err, http.StatusInternalServerError)
 	}
 
 	if !success && err == nil {
-		w.WriteHeader(http.StatusNoContent) // already deleted
+		w.WriteHeader(http.StatusNoContent) // wasn't deleted in the first place
 	} else {
 		writeJSON(w, r, map[string]bool{"Success": success})
 	}

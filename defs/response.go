@@ -15,19 +15,9 @@
 	along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
 
-package daily
+package defs
 
-import (
-	"github.com/pagefaultgames/rogueserver/db"
-	"github.com/pagefaultgames/rogueserver/defs"
-)
-
-// /daily/rankings - fetch daily rankings
-func Rankings(category, page int) ([]defs.DailyRanking, error) {
-	rankings, err := db.FetchRankings(category, page)
-	if err != nil {
-		return rankings, err
-	}
-
-	return rankings, nil
+type PaginatedResponse struct {
+	Total int         `json:"total"`
+	Data  interface{} `json:"data"`
 }

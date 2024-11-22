@@ -62,6 +62,10 @@ func Init(mux *http.ServeMux) error {
 	mux.HandleFunc("GET /daily/seed", handleDailySeed)
 	mux.HandleFunc("GET /daily/rankings", handleDailyRankings)
 	mux.HandleFunc("GET /daily/rankingpagecount", handleDailyRankingPageCount)
+	// daily/runs
+	mux.HandleFunc("GET /daily/runs", handleGetDailyRuns)
+	mux.HandleFunc("DELETE /daily/runs", handleSoftDeleteDailyRun)
+	mux.HandleFunc("POST /daily/runs/restore", handleRestoreDeletedDailyRun)
 
 	// auth
 	mux.HandleFunc("/auth/{provider}/callback", handleProviderCallback)
@@ -73,8 +77,6 @@ func Init(mux *http.ServeMux) error {
 	mux.HandleFunc("POST /admin/account/googleLink", handleAdminGoogleLink)
 	mux.HandleFunc("POST /admin/account/googleUnlink", handleAdminGoogleUnlink)
 	mux.HandleFunc("GET /admin/account/adminSearch", handleAdminSearch)
-	mux.HandleFunc("GET /admin/daily/ranking/search", handleAdminDailyRankingSearch)
-	mux.HandleFunc("DELETE /admin/daily/ranking", handleAdminSoftDeleteDailyRanking)
 
 	return nil
 }

@@ -24,14 +24,12 @@ type DailyRanking struct {
 	Wave     int    `json:"wave"`
 }
 
-type DailyRankingSearchResultItem struct {
-	Uuid               []byte  `json:"uuid"`
+type DailyRun struct {
+	Username           string  `json:"username"`
 	Date               string  `json:"date"`
 	Score              int     `json:"score"`
 	Wave               int     `json:"wave"`
-	Timestamp          string  `json:"timestamp"`
 	Deleted            int     `json:"deleted"`
-	DeletedAt          *string `json:"deletedAtm,omitempty"`
-	DeletedByDiscordId *string `json:"deletedByDiscordId,omitempty"`
-	Username           string  `json:"username"`
+	DeletedAt          *string `json:"deletedAt"`
+	DeletedByDiscordId *string `json:"deletedByDiscordId"`
 }
