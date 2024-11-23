@@ -199,11 +199,11 @@ func FetchLastLoggedInDateByUsername(username string) (string, error) {
 }
 
 type AdminSearchResponse struct {
-	Username        string `json:"username"`
-	DiscordId       string `json:"discordId"`
-	GoogleId        string `json:"googleId"`
-	LastActivity	string `json:"lastLoggedIn"` // TODO: this is currently lastLoggedIn to match server PR #54 with pokerogue PR #4198. We're hotfixing the server with this PR to return lastActivity, but we're not hotfixing the client, so are leaving this as lastLoggedIn so that it still talks to the client properly
-	Registered		string `json:"registered"`
+	Username     string `json:"username"`
+	DiscordId    string `json:"discordId"`
+	GoogleId     string `json:"googleId"`
+	LastActivity string `json:"lastLoggedIn"` // TODO: this is currently lastLoggedIn to match server PR #54 with pokerogue PR #4198. We're hotfixing the server with this PR to return lastActivity, but we're not hotfixing the client, so are leaving this as lastLoggedIn so that it still talks to the client properly
+	Registered   string `json:"registered"`
 }
 
 func FetchAdminDetailsByUsername(dbUsername string) (AdminSearchResponse, error) {
@@ -216,11 +216,11 @@ func FetchAdminDetailsByUsername(dbUsername string) (AdminSearchResponse, error)
 	}
 
 	adminResponse = AdminSearchResponse{
-		Username:        username.String,
-		DiscordId:       discordId.String,
-		GoogleId:        googleId.String,
-		LastActivity:    lastActivity.String,
-		Registered:		 registered.String,
+		Username:     username.String,
+		DiscordId:    discordId.String,
+		GoogleId:     googleId.String,
+		LastActivity: lastActivity.String,
+		Registered:   registered.String,
 	}
 
 	return adminResponse, nil
@@ -477,4 +477,56 @@ func RemoveGoogleIdByDiscordId(discordId string) error {
 	}
 
 	return nil
+}
+
+func FetchAccountsAlt(q string, limit int) ([]defs.Account, error) {
+	var accounts []defs.Account
+	wildcardQuery := "%" + q + "%"
+	dbQuery := `
+	SELECT 
+		a.username
+		a.registered
+		a.lastLoggedIn
+		a.lastActivity
+		a.banned
+		a.trainerId
+		a.secretId
+		a.discordId
+		a.googleId
+	WHERE a.username = ?
+	LIMIT ?`
+
+	var rows *sql.Rows
+	var err error
+
+	rows, err = handle.Query(dbQuery, wildcardQuery, limit)
+
+	if err != nil {
+		return nil, err
+	}
+
+	defer rows.Close()
+
+	for rows.Next() {
+		var item defs.Account
+
+		err = rows.Scan(
+			&item.Username,
+			&item.Registered,
+			&item.LastLoggedIn,
+			&item.LastActivity,
+			&item.Banned,
+			&item.TrainerId,
+			&item.SecretId,
+			&item.DiscordId,
+			&item.GoogleId,
+		)
+		if err != nil {
+			return nil, err
+		}
+
+		accounts = append(accounts, item)
+	}
+
+	return accounts, nil
 }

@@ -30,6 +30,7 @@ import (
 	"time"
 
 	"github.com/pagefaultgames/rogueserver/api/account"
+	"github.com/pagefaultgames/rogueserver/api/accounts"
 	"github.com/pagefaultgames/rogueserver/api/daily"
 	"github.com/pagefaultgames/rogueserver/api/savedata"
 	"github.com/pagefaultgames/rogueserver/db"
@@ -152,6 +153,35 @@ func handleAccountLogout(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.WriteHeader(http.StatusOK)
+}
+
+//accounts
+
+func handleSearchAccounts(w http.ResponseWriter, r *http.Request) {
+	query := ""
+	if r.URL.Query().Has("q") {
+		query = r.URL.Query().Get("q")
+
+		if query == "" {
+			httpError(w, r, fmt.Errorf("query (q) parameter is required"), http.StatusBadRequest)
+			return
+		}
+	} else {
+		httpError(w, r, fmt.Errorf("query (q) parameter is required"), http.StatusBadRequest)
+		return
+	}
+
+	results, err := accounts.SearchAccounts(query)
+	if err != nil {
+		httpError(w, r, err, http.StatusBadRequest)
+		return
+	}
+	if (results == nil) || (len(results) == 0) {
+		httpError(w, r, err, http.StatusBadRequest)
+		return
+	}
+
+	writeJSON(w, r, results)
 }
 
 // game
